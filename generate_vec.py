@@ -47,25 +47,58 @@ SELF_REF_PATTERN = re.compile(
 )
 
 def get_persona_effective(pos_path, neg_path, trait, threshold=50):
+    """Filter pos and neg responses for vector extraction.
+
+    Supports two modes:
+    - Same-trait (matched pairs): pos and neg CSVs have same row count and are paired by index.
+      Filter: pos[trait] >= threshold AND neg[trait] < (100-threshold) AND both coherent.
+    - Cross-trait (independent): pos and neg CSVs may have different row counts or come from
+      different traits. Both must have a 'depression' column (added by score_on_depression.py).
+      Filter each side independently: pos[trait] >= threshold AND coherent;
+      neg[trait] < (100-threshold) AND coherent AND not self-referencing.
+    """
     persona_pos = pd.read_csv(pos_path)
     persona_neg = pd.read_csv(neg_path)
 
-    # Score-based filter (Chen original)
-    mask = (persona_pos[trait] >=threshold) & (persona_neg[trait] < 100-threshold) & (persona_pos["coherence"] >= 50) & (persona_neg["coherence"] >= 50)
-    n_score_dropped = (~mask).sum()
+    matched_pairs = (len(persona_pos) == len(persona_neg))
 
-    # Self-reference filter: drop pairs where neg response discloses AI identity
-    self_ref_mask = ~persona_neg["answer"].str.contains(SELF_REF_PATTERN, regex=True)
-    mask = mask & self_ref_mask
-    n_self_ref_dropped = (~self_ref_mask).sum()
+    if matched_pairs:
+        # Same-trait mode: Chen's original matched-pair filter
+        print(f"Filtering (matched-pair mode): {len(persona_pos)} pairs")
 
-    print(f"Filtering: {len(persona_pos)} total pairs")
-    print(f"  Score/coherence filter: dropped {n_score_dropped}")
-    print(f"  Self-reference filter: dropped {n_self_ref_dropped}")
-    print(f"  Surviving pairs: {mask.sum()}")
+        mask = (persona_pos[trait] >= threshold) & (persona_neg[trait] < 100-threshold) & \
+               (persona_pos["coherence"] >= 50) & (persona_neg["coherence"] >= 50)
+        n_score_dropped = (~mask).sum()
 
-    persona_pos_effective = persona_pos[mask]
-    persona_neg_effective = persona_neg[mask]
+        self_ref_mask = ~persona_neg["answer"].str.contains(SELF_REF_PATTERN, regex=True)
+        mask = mask & self_ref_mask
+        n_self_ref_dropped = (~self_ref_mask).sum()
+
+        print(f"  Score/coherence filter: dropped {n_score_dropped}")
+        print(f"  Self-reference filter: dropped {n_self_ref_dropped}")
+        print(f"  Surviving pairs: {mask.sum()}")
+
+        persona_pos_effective = persona_pos[mask]
+        persona_neg_effective = persona_neg[mask]
+    else:
+        # Cross-trait mode: filter each side independently
+        print(f"Filtering (independent mode): {len(persona_pos)} pos, {len(persona_neg)} neg")
+
+        # Pos: must score high on trait and be coherent
+        pos_mask = (persona_pos[trait] >= threshold) & (persona_pos["coherence"] >= 50)
+        pos_self_ref = persona_pos["answer"].str.contains(SELF_REF_PATTERN, regex=True)
+        pos_mask = pos_mask & ~pos_self_ref
+
+        # Neg: must score low on trait and be coherent and not self-referencing
+        neg_mask = (persona_neg[trait] < 100-threshold) & (persona_neg["coherence"] >= 50)
+        neg_self_ref = persona_neg["answer"].str.contains(SELF_REF_PATTERN, regex=True)
+        neg_mask = neg_mask & ~neg_self_ref
+
+        print(f"  Pos surviving: {pos_mask.sum()}/{len(persona_pos)} (self-ref dropped: {pos_self_ref.sum()})")
+        print(f"  Neg surviving: {neg_mask.sum()}/{len(persona_neg)} (self-ref dropped: {neg_self_ref.sum()})")
+
+        persona_pos_effective = persona_pos[pos_mask]
+        persona_neg_effective = persona_neg[neg_mask]
 
     persona_pos_effective_prompts = persona_pos_effective["prompt"].tolist()
     persona_neg_effective_prompts = persona_neg_effective["prompt"].tolist()

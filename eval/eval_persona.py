@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.ERROR)
 # Set up credentials and environment
 config = setup_credentials()
 
-def sample_steering(model, tokenizer, conversations,  vector, layer, coef, bs=20, top_p=1, max_tokens=1000, temperature=1, min_tokens=1, steering_type="response"):
+def sample_steering(model, tokenizer, conversations,  vector, layer, coef, bs=64, top_p=1, max_tokens=1000, temperature=1, min_tokens=1, steering_type="response"):
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
