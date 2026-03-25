@@ -1,16 +1,23 @@
 import os
+import asyncio
+import logging
 from typing import Dict, List
 import math
 from functools import lru_cache
 from pathlib import Path
 import yaml
 import numpy as np
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIStatusError
 from config import setup_credentials
+
+logger = logging.getLogger(__name__)
 
 # Set up credentials and environment
 config = setup_credentials()
-openai = AsyncOpenAI()
+openai = AsyncOpenAI(timeout=60.0)  # 60s timeout per request
+
+MAX_RETRIES = 5
+RETRY_BASE_DELAY = 2.0  # seconds, doubles each retry
 
 
 
@@ -46,17 +53,42 @@ class OpenAiJudge:
             score = self.aggregate_score(logprobs) # aggregate_score is one of the other three
         return score
 
+    async def _retry_api_call(self, coro_factory):
+        """Retry an async API call with exponential backoff on rate limits and transient errors."""
+        for attempt in range(MAX_RETRIES):
+            try:
+                return await coro_factory()
+            except RateLimitError as e:
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(f"Rate limited (attempt {attempt+1}/{MAX_RETRIES}), retrying in {delay:.1f}s")
+                await asyncio.sleep(delay)
+            except (APITimeoutError, APIConnectionError) as e:
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(f"Transient error: {e} (attempt {attempt+1}/{MAX_RETRIES}), retrying in {delay:.1f}s")
+                await asyncio.sleep(delay)
+            except APIStatusError as e:
+                if e.status_code >= 500:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(f"Server error {e.status_code} (attempt {attempt+1}/{MAX_RETRIES}), retrying in {delay:.1f}s")
+                    await asyncio.sleep(delay)
+                else:
+                    raise  # 4xx errors (except rate limit) are not retryable
+        # Final attempt — let it raise
+        return await coro_factory()
+
     async def logprob_probs(self, messages) -> dict:
-        """Simple logprobs request. Returns probabilities. Always samples 1 token."""
-        completion = await openai.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=1,
-            temperature=0,
-            logprobs=True,
-            top_logprobs=20,
-            seed=0
-        )
+        """Simple logprobs request with retry. Returns probabilities. Always samples 1 token."""
+        async def _call():
+            return await openai.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=1,
+                temperature=0,
+                logprobs=True,
+                top_logprobs=20,
+                seed=0
+            )
+        completion = await self._retry_api_call(_call)
         try:
             logprobs = completion.choices[0].logprobs.content[0].top_logprobs
         except IndexError:
@@ -66,17 +98,19 @@ class OpenAiJudge:
         result = {}
         for el in logprobs:
             result[el.token] = float(math.exp(el.logprob))
-        
+
         return result
-    
+
     async def query_full_text(self, messages) -> str:
-        """Requests a full text completion. Used for binary_text eval_type."""
-        completion = await openai.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0,
-            seed=0
-        )
+        """Requests a full text completion with retry. Used for binary_text eval_type."""
+        async def _call():
+            return await openai.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0,
+                seed=0
+            )
+        completion = await self._retry_api_call(_call)
         try:
             return completion.choices[0].message.content
         except (IndexError, AttributeError):

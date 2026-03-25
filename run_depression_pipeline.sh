@@ -25,7 +25,10 @@ MODEL_SHORT="Llama-3.1-8B-Instruct"
 JUDGE_MODEL="gpt-4.1-mini-2025-04-14"
 VERSION="extract"
 N_PER_QUESTION=10
-MAX_CONCURRENT_JUDGES=100
+# Keep concurrency conservative to avoid OpenAI rate limits.
+# Tier 1: 500 RPM → ~8 RPS. Tier 2: 5000 RPM → ~83 RPS.
+# 30 concurrent is safe for Tier 1; increase if on higher tier.
+MAX_CONCURRENT_JUDGES=30
 
 # Parse args
 DRY_RUN=false
