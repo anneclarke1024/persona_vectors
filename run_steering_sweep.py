@@ -43,7 +43,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--vector_path", type=str, required=True, help="Path to .pt vector file")
     parser.add_argument("--layers", type=int, nargs="+", required=True, help="Layer indices to sweep")
-    parser.add_argument("--alphas", type=float, nargs="+", default=[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0], help="Alpha coefficients")
+    parser.add_argument("--alphas", type=float, nargs="+", default=[0.5, 1.0, 1.5, 2.0, 2.5, 3.0], help="Alpha coefficients (exclude 0.0 — baseline already exists from generation)")
     parser.add_argument("--n_per_question", type=int, default=1, help="Responses per question")
     parser.add_argument("--steering_type", type=str, default="response", choices=["all", "prompt", "response"])
     parser.add_argument("--resume", action="store_true")
