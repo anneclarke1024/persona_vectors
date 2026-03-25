@@ -36,16 +36,38 @@ def get_hidden_p_and_r(model, tokenizer, prompts, responses, layer_list=None):
 
 import pandas as pd
 import os
+import re
+
+SELF_REF_PATTERN = re.compile(
+    r'language model|an AI|artificial intelligence|I don.t have personal|'
+    r'I don.t experience|I don.t have feelings|as an AI|I.m not a person|'
+    r'don.t have physical|digital assistant|virtual assistant|'
+    r'cannot physically|I exist as',
+    re.IGNORECASE
+)
 
 def get_persona_effective(pos_path, neg_path, trait, threshold=50):
     persona_pos = pd.read_csv(pos_path)
     persona_neg = pd.read_csv(neg_path)
+
+    # Score-based filter (Chen original)
     mask = (persona_pos[trait] >=threshold) & (persona_neg[trait] < 100-threshold) & (persona_pos["coherence"] >= 50) & (persona_neg["coherence"] >= 50)
+    n_score_dropped = (~mask).sum()
+
+    # Self-reference filter: drop pairs where neg response discloses AI identity
+    self_ref_mask = ~persona_neg["answer"].str.contains(SELF_REF_PATTERN, regex=True)
+    mask = mask & self_ref_mask
+    n_self_ref_dropped = (~self_ref_mask).sum()
+
+    print(f"Filtering: {len(persona_pos)} total pairs")
+    print(f"  Score/coherence filter: dropped {n_score_dropped}")
+    print(f"  Self-reference filter: dropped {n_self_ref_dropped}")
+    print(f"  Surviving pairs: {mask.sum()}")
 
     persona_pos_effective = persona_pos[mask]
     persona_neg_effective = persona_neg[mask]
 
-    persona_pos_effective_prompts = persona_pos_effective["prompt"].tolist()    
+    persona_pos_effective_prompts = persona_pos_effective["prompt"].tolist()
     persona_neg_effective_prompts = persona_neg_effective["prompt"].tolist()
 
     persona_pos_effective_responses = persona_pos_effective["answer"].tolist()
