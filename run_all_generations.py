@@ -28,7 +28,10 @@ config = setup_credentials()
 MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 JUDGE_MODEL = "gpt-4.1-mini-2025-04-14"
 VERSION = "extract"
-MAX_CONCURRENT_JUDGES = 30
+# Tier 1 TPM limit: 200K tokens/min. Each judge call is ~500 tokens.
+# 10 concurrent × ~2 calls/sec = ~10K tokens/sec = 600K/min — still over.
+# But with backoff retries, this self-regulates. 10 is conservative enough.
+MAX_CONCURRENT_JUDGES = 10
 
 RUNS = [
     {

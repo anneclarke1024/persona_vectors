@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 
 # Set up credentials and environment
 config = setup_credentials()
-openai = AsyncOpenAI(timeout=60.0)  # 60s timeout per request
+# Disable SDK internal retries — we handle retries ourselves with longer backoff
+openai = AsyncOpenAI(timeout=60.0, max_retries=0)
 
-MAX_RETRIES = 5
-RETRY_BASE_DELAY = 2.0  # seconds, doubles each retry
+MAX_RETRIES = 8
+RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry (1, 2, 4, 8, 16, 32, 64, 128)
 
 
 
