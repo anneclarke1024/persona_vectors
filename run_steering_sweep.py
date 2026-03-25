@@ -104,7 +104,8 @@ def main():
     done = 0
 
     for layer in args.layers:
-        vector = full_vector[layer]
+        # Extract the 1-D vector for this layer (ActivationSteerer expects 1-D)
+        layer_vector = full_vector[layer]
 
         for alpha in args.alphas:
             done += 1
@@ -121,7 +122,7 @@ def main():
                 outputs_list = asyncio.run(
                     eval_batched(
                         questions, model, tokenizer,
-                        coef=alpha, vector=full_vector, layer=layer,
+                        coef=alpha, vector=layer_vector, layer=layer,
                         n_per_question=args.n_per_question,
                         max_concurrent_judges=MAX_CONCURRENT_JUDGES,
                         max_tokens=1000,
