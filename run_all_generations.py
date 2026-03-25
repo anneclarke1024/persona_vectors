@@ -15,6 +15,8 @@ from datetime import datetime
 
 # Ensure HF cache is on workspace
 os.environ.setdefault("HF_HOME", "/workspace/.cache/huggingface")
+# Use vLLM V0 engine — V1 hangs on some RunPod configurations
+os.environ.setdefault("VLLM_USE_V1", "0")
 
 from eval.eval_persona import load_persona_questions, eval_batched, sample
 from eval.model_utils import load_vllm_model
